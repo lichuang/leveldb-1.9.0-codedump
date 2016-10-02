@@ -63,6 +63,7 @@ class VersionEdit {
                uint64_t file_size,
                const InternalKey& smallest,
                const InternalKey& largest) {
+    // FileMetaData存放新增文件的信息
     FileMetaData f;
     f.number = file;
     f.file_size = file_size;

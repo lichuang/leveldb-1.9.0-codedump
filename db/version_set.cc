@@ -35,8 +35,10 @@ static const int64_t kExpandedCompactionByteSizeLimit = 25 * kTargetFileSize;
 static double MaxBytesForLevel(int level) {
   // Note: the result for level zero is not really used since we set
   // the level-0 compaction threshold based on number of files.
+  // 0,1级的大小是1M
   double result = 10 * 1048576.0;  // Result for both level-0 and level-1
   while (level > 1) {
+    // 每多一级，大小翻10倍
     result *= 10;
     level--;
   }
@@ -48,6 +50,7 @@ static uint64_t MaxFileSizeForLevel(int level) {
   return kTargetFileSize;  // We could vary per level to reduce number of files?
 }
 
+// 返回这些文件集合的大小之和
 static int64_t TotalFileSize(const std::vector<FileMetaData*>& files) {
   int64_t sum = 0;
   for (size_t i = 0; i < files.size(); i++) {
@@ -414,6 +417,9 @@ bool Version::UpdateStats(const GetStats& stats) {
   FileMetaData* f = stats.seek_file;
   if (f != NULL) {
     f->allowed_seeks--;
+    // 当这个文件的allowed_seeks小于等于0，同时当前没有在compact的文件时，
+    // 记录下待compact的文件，以及compact的级别
+    // allowed_seeks在Apply函数中进行初始化
     if (f->allowed_seeks <= 0 && file_to_compact_ == NULL) {
       file_to_compact_ = f;
       file_to_compact_level_ = stats.seek_file_level;
@@ -647,6 +653,18 @@ class VersionSet::Builder {
       // same as the compaction of 40KB of data.  We are a little
       // conservative and allow approximately one seek for every 16KB
       // of data before triggering a compaction.
+
+      // 对上面这段注释的翻译：
+      // 这里将在特定数量的seek之后自动进行compact操作，假设：
+      // (1) 一次seek需要10ms
+      // (2) 读、写1MB文件消耗10ms(100MB/s)
+      // (3) 对1MB文件的compact操作时合计一共做了25MB的IO操作，包括：
+      //    从这个级别读1MB
+      //    从下一个级别读10-12MB
+      //    向下一个级别写10-12MB
+      //  这意味着25次seek的消耗与1MB数据的compact相当。也就是，
+      //  一次seek的消耗与40KB数据的compact消耗近似。这里做一个
+      //  保守的估计，在一次compact之前每16KB的数据大约进行1次seek。
       // allowed_seeks数目和文件数量有关
       f->allowed_seeks = (f->file_size / 16384);
       // 不足100就补齐到100
@@ -1007,6 +1025,7 @@ void VersionSet::MarkFileNumberUsed(uint64_t number) {
   }
 }
 
+// 预计算下一次compact的最佳层次
 void VersionSet::Finalize(Version* v) {
   // Precomputed best level for next compaction
   int best_level = -1;
@@ -1032,7 +1051,7 @@ void VersionSet::Finalize(Version* v) {
           static_cast<double>(config::kL0_CompactionTrigger);
     } else {
       // Compute the ratio of current size to size limit.
-      // 其他级别是按照该级别所有文件的尺寸之和来计算分数
+      // 其他级别是按照该级别所有文件的尺寸之和与来计算分数
       const uint64_t level_bytes = TotalFileSize(v->files_[level]);
       score = static_cast<double>(level_bytes) / MaxBytesForLevel(level);
     }
@@ -1284,7 +1303,9 @@ Compaction* VersionSet::PickCompaction() {
 
   // We prefer compactions triggered by too much data in a level over
   // the compactions triggered by seeks.
+  // compaction_score_在VersionSet::Finalize中计算
   const bool size_compaction = (current_->compaction_score_ >= 1);
+  // file_to_compact_在Version::UpdateStats函数中计算
   const bool seek_compaction = (current_->file_to_compact_ != NULL);
   if (size_compaction) {
 	// 如果有compaction_score_ >= 1的情况,优先考虑这种情况
@@ -1356,12 +1377,16 @@ void VersionSet::SetupOtherInputs(Compaction* c) {
 
   // See if we can grow the number of inputs in "level" without
   // changing the number of "level+1" files we pick up.
+  // 看是否能在不改变前面已经取出的level+1文件数量的条件下
+  // 增加level级别文件的数量
   // 看能否将level中与取出的level+1中的range重叠的也加到inputs中，
   // 而新加的文件的range都在已经加入的level+1的文件的范围中
   if (!c->inputs_[1].empty()) {
     std::vector<FileMetaData*> expanded0;
-    // 在level中寻找范围在[all_start, all_limit]中的文件
+    // 在level中寻找范围在[all_start, all_limit]中的文件,
+    // 新增加的level级别的文件在expended0中返回
     current_->GetOverlappingInputs(level, &all_start, &all_limit, &expanded0);
+    // 几种集合的文件大小之和
     const int64_t inputs0_size = TotalFileSize(c->inputs_[0]);
     const int64_t inputs1_size = TotalFileSize(c->inputs_[1]);
     const int64_t expanded0_size = TotalFileSize(expanded0);
@@ -1376,7 +1401,7 @@ void VersionSet::SetupOtherInputs(Compaction* c) {
       current_->GetOverlappingInputs(level+1, &new_start, &new_limit,
                                      &expanded1);
       if (expanded1.size() == c->inputs_[1].size()) { // expanded1和inputs[1]大小相同,而expanded0>inputs[0]
-    	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  // 那么说明可以扩展level的文件数量而不改变level + 1的文件数量
+  	  	  	  	  	  	  	  	  	  	  	  	  	  // 那么说明可以扩展level的文件数量而不改变level + 1的文件数量
         Log(options_->info_log,
             "Expanding@%d %d+%d (%ld+%ld bytes) to %d+%d (%ld+%ld bytes)\n",
             level,

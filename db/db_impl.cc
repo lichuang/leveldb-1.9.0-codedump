@@ -452,6 +452,7 @@ Status DBImpl::RecoverLogFile(uint64_t log_number,
   return status;
 }
 
+// 将memtable写入0级文件中
 Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
                                 Version* base) {
   mutex_.AssertHeld();
@@ -466,6 +467,7 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   Status s;
   {
     mutex_.Unlock();
+    // 新建一个table builder负责写文件
     s = BuildTable(dbname_, env_, options_, table_cache_, iter, &meta);
     mutex_.Lock();
   }
@@ -498,6 +500,7 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   return s;
 }
 
+// 对memtable进行compact
 Status DBImpl::CompactMemTable() {
   mutex_.AssertHeld();
   assert(imm_ != NULL);
@@ -681,7 +684,7 @@ Status DBImpl::BackgroundCompaction() {
         (m->end ? m->end->DebugString().c_str() : "(end)"),
         (m->done ? "(end)" : manual_end.DebugString().c_str()));
   } else {
-	// 选择compaction的文件
+	  // 选择compaction的文件
     c = versions_->PickCompaction();
   }
 
@@ -886,13 +889,17 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   std::string current_user_key;
   bool has_current_user_key = false;
   SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
+  // 遍历所有input文件
   for (; input->Valid() && !shutting_down_.Acquire_Load(); ) {
     // Prioritize immutable compaction work
+    // 如果有imm table，那么就先进行imm table的compact
     if (has_imm_.NoBarrier_Load() != NULL) {
       const uint64_t imm_start = env_->NowMicros();
       mutex_.Lock();
       if (imm_ != NULL) {
+        // compact memtable
         CompactMemTable();
+        // 唤醒所有在MakeRoomForWrite函数中等待的线程
         bg_cv_.SignalAll();  // Wakeup MakeRoomForWrite() if necessary
       }
       mutex_.Unlock();
@@ -912,6 +919,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     bool drop = false;
     if (!ParseInternalKey(key, &ikey)) {
       // Do not hide error keys
+      // decode失败，清除之前的状态
       current_user_key.clear();
       has_current_user_key = false;
       last_sequence_for_key = kMaxSequenceNumber;
@@ -919,8 +927,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       if (!has_current_user_key ||
           user_comparator()->Compare(ikey.user_key,
                                      Slice(current_user_key)) != 0) {
-    	// 每次来一个新的key都会满足compare != 0啊
-    	// 由于key是按序排列的,所以每个key只有第一次出现才会走到这里
+    	  // 每次来一个新的key都会满足compare != 0啊
+    	  // 由于key是按序排列的,所以每个key只有第一次出现才会走到这里
         // First occurrence of this user key
         current_user_key.assign(ikey.user_key.data(), ikey.user_key.size());
         has_current_user_key = true;
@@ -930,7 +938,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
 
       if (last_sequence_for_key <= compact->smallest_snapshot) {
         // Hidden by an newer entry for same user key
-    	// 上次出现的序列号直接比snapshot最小的还要小,没有保留的价值
+    	  // 上次出现的序列号直接比snapshot最小的还要小,没有保留的价值
         drop = true;    // (A)
       } else if (ikey.type == kTypeDeletion &&
                  ikey.sequence <= compact->smallest_snapshot &&
@@ -942,7 +950,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         //     smaller sequence numbers will be dropped in the next
         //     few iterations of this loop (by rule (A) above).
         // Therefore this deletion marker is obsolete and can be dropped.
-    	// 如果是删除操作,而且在更高层找不到这个user_key了,同时它的sequence比最小的snapshot还小,那么就drop掉
+    	  // 如果是删除操作,而且在更高层找不到这个user_key了,同时它的sequence比最小的snapshot还小,那么就drop掉
         drop = true;
       }
 
@@ -992,7 +1000,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     status = Status::IOError("Deleting DB during compaction");
   }
   if (status.ok() && compact->builder != NULL) {
-	// 写入磁盘
+	  // 写入磁盘
     status = FinishCompactionOutputFile(compact, input);
   }
   if (status.ok()) {
@@ -1016,7 +1024,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   stats_[compact->compaction->level() + 1].Add(stats);
 
   if (status.ok()) {
-	// 保存compact结果
+	  // 保存compact结果
     status = InstallCompactionResults(compact);
   }
   VersionSet::LevelSummaryStorage tmp;

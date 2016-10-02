@@ -56,7 +56,7 @@ struct TableBuilder::Rep {
         filter_block(opt.filter_policy == NULL ? NULL
                      : new FilterBlockBuilder(opt.filter_policy)),
         pending_index_entry(false) {
-	// 为什么这里要hard code为1???
+	  // 为什么这里要hard code为1???
     index_block_options.block_restart_interval = 1;
   }
 };
@@ -102,8 +102,8 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
   }
 
   if (r->pending_index_entry) {
-	// pending_index_entry为true表示该data block还没有对应的index block保存它的索引位置,也就是说是data block的第一块数据
-	// 保证当前data block为空
+	  // pending_index_entry为true表示该data block还没有对应的index block保存它的索引位置,也就是说是data block的第一块数据
+	  // 保证当前data block为空
     assert(r->data_block.empty());
     r->options.comparator->FindShortestSeparator(&r->last_key, key);
     std::string handle_encoding;
@@ -216,6 +216,7 @@ Status TableBuilder::status() const {
   return rep_->status;
 }
 
+// 这个函数按照文件的格式依次写入文件的各个部分
 Status TableBuilder::Finish() {
   Rep* r = rep_;
   // 首先flush了data block部分
