@@ -603,6 +603,7 @@ Status DBImpl::TEST_CompactMemTable() {
 void DBImpl::MaybeScheduleCompaction() {
   mutex_.AssertHeld();
   if (bg_compaction_scheduled_) {
+    // 已经开始了compact操作
     // Already scheduled
   } else if (shutting_down_.Acquire_Load()) {
     // DB is being deleted; no more background compactions
@@ -611,6 +612,7 @@ void DBImpl::MaybeScheduleCompaction() {
              !versions_->NeedsCompaction()) {
     // No work to be done
   } else {
+    // 到了这里就可以进行compact操作了
     bg_compaction_scheduled_ = true;
     env_->Schedule(&DBImpl::BGWork, this);
   }
@@ -651,6 +653,7 @@ void DBImpl::BackgroundCall() {
   bg_cv_.SignalAll();
 }
 
+// 真正进行compact操作的函数
 Status DBImpl::BackgroundCompaction() {
   mutex_.AssertHeld();
 
@@ -663,11 +666,12 @@ Status DBImpl::BackgroundCompaction() {
   Compaction* c;
   bool is_manual = (manual_compaction_ != NULL);
   InternalKey manual_end;
-  if (is_manual) {
+  if (is_manual) {  // 手动触发compact
     ManualCompaction* m = manual_compaction_;
     c = versions_->CompactRange(m->level, m->begin, m->end);
     m->done = (c == NULL);
     if (c != NULL) {
+      // 选择最大的一个key
       manual_end = c->input(0, c->num_input_files(0) - 1)->largest;
     }
     Log(options_.info_log,
@@ -1292,6 +1296,7 @@ WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
 Status DBImpl::MakeRoomForWrite(bool force) {
   mutex_.AssertHeld();
   assert(!writers_.empty());
+  // 如果不force就是允许延迟
   bool allow_delay = !force;
   Status s;
   while (true) {
@@ -1302,21 +1307,28 @@ Status DBImpl::MakeRoomForWrite(bool force) {
     } else if (
         allow_delay &&
         versions_->NumLevelFiles(0) >= config::kL0_SlowdownWritesTrigger) {
+      // 允许延迟而且0级文件大于某个值的情况下等待1秒
       // We are getting close to hitting a hard limit on the number of
       // L0 files.  Rather than delaying a single write by several
       // seconds when we hit the hard limit, start delaying each
       // individual write by 1ms to reduce latency variance.  Also,
       // this delay hands over some CPU to the compaction thread in
       // case it is sharing the same core as the writer.
-      // 允许延迟而且0级文件大于某个值的情况下等待1秒
+      // 这种情况下，0级文件的数量以及接近上限了。为了避免出现某一个单独的写操作几秒钟的延迟，
+      // 这里的做法是到达这个阈值时的每一次写操作都进行延迟。这样做也可以在compact操作与这个
+      // 操作同一个线程时，让出CPU时间给compact操作。
+      // 解锁
       mutex_.Unlock();
+      // 硬编码等待一秒
       env_->SleepForMicroseconds(1000);
+      // 下次不再等待
       allow_delay = false;  // Do not delay a single write more than once
+      // 重新上锁
       mutex_.Lock();
     } else if (!force &&
                (mem_->ApproximateMemoryUsage() <= options_.write_buffer_size)) {
       // There is room in current memtable
-      // 当前有足够的空间
+      // 当前在memtable中有足够的空间
       break;
     } else if (imm_ != NULL) {
       // We have filled up the current memtable, but the previous
@@ -1332,23 +1344,29 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       // Attempt to switch to a new memtable and trigger compaction of old
       // OK,到这里创建一个新的memtable,将旧的memtable switch到imm table上,触发一次compaction操作
       assert(versions_->PrevLogNumber() == 0);
+      // 获取新的log文件number
       uint64_t new_log_number = versions_->NewFileNumber();
       WritableFile* lfile = NULL;
       s = env_->NewWritableFile(LogFileName(dbname_, new_log_number), &lfile);
       if (!s.ok()) {
         // Avoid chewing through file number space in a tight loop.
+        // 如果创建log文件失败，要重新复用这个lognumber
         versions_->ReuseFileNumber(new_log_number);
         break;
       }
       delete log_;
       delete logfile_;
       logfile_ = lfile;
+      // 存储新的lognumber
       logfile_number_ = new_log_number;
+      // 创建新的log writer
       log_ = new log::Writer(lfile);
       imm_ = mem_;
       has_imm_.Release_Store(imm_);
+      // 创建新的memtable
       mem_ = new MemTable(internal_comparator_);
       mem_->Ref();
+      // 下次不再force
       force = false;   // Do not force another compaction if have room
       MaybeScheduleCompaction();
     }

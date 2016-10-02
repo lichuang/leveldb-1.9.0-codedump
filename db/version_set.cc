@@ -1277,6 +1277,7 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
   return result;
 }
 
+// 选择compact文件
 Compaction* VersionSet::PickCompaction() {
   Compaction* c;
   int level;
