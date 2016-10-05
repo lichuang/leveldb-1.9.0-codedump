@@ -11,6 +11,7 @@
 
 namespace leveldb {
 
+// 按照特定的格式：长度（前面五字节）+ 数据来返回slice数据
 static Slice GetLengthPrefixedSlice(const char* data) {
   uint32_t len;
   const char* p = data;
@@ -28,6 +29,7 @@ MemTable::~MemTable() {
   assert(refs_ == 0);
 }
 
+// 返回这个memtable的内存占用
 size_t MemTable::ApproximateMemoryUsage() { return arena_.MemoryUsage(); }
 
 int MemTable::KeyComparator::operator()(const char* aptr, const char* bptr)
@@ -41,6 +43,7 @@ int MemTable::KeyComparator::operator()(const char* aptr, const char* bptr)
 // Encode a suitable internal key target for "target" and return it.
 // Uses *scratch as scratch space, and the returned pointer will point
 // into this scratch space.
+// 把slice的数据encode到string中
 static const char* EncodeKey(std::string* scratch, const Slice& target) {
   scratch->clear();
   PutVarint32(scratch, target.size());
@@ -79,6 +82,13 @@ Iterator* MemTable::NewIterator() {
   return new MemTableIterator(&table_);
 }
 
+// 向memtable中添加数据
+// 数据的格式：
+// key_size
+// key
+// seq+type（8 byte,其中前7byte为seq，最后一个byte是type）
+// value size
+// value
 void MemTable::Add(SequenceNumber s, ValueType type,
                    const Slice& key,
                    const Slice& value) {
@@ -89,27 +99,39 @@ void MemTable::Add(SequenceNumber s, ValueType type,
   //  value bytes  : char[value.size()]
   size_t key_size = key.size();
   size_t val_size = value.size();
+  // 多出8个字节用来encode seq+type的
   size_t internal_key_size = key_size + 8;
   const size_t encoded_len =
       VarintLength(internal_key_size) + internal_key_size +
       VarintLength(val_size) + val_size;
+  // 从arena中分配空间
   char* buf = arena_.Allocate(encoded_len);
+  // 先encode key size+8byte
   char* p = EncodeVarint32(buf, internal_key_size);
+  // encode key数据
   memcpy(p, key.data(), key_size);
   p += key_size;
+  // encode seq+type
   EncodeFixed64(p, (s << 8) | type);
   p += 8;
+  // encode value size
   p = EncodeVarint32(p, val_size);
+  // encode value数据
   memcpy(p, value.data(), val_size);
   assert((p + val_size) - buf == encoded_len);
+  // 将encode之后的缓存数据放入到table中
   table_.Insert(buf);
 }
 
 bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
+  // 先拿到key
   Slice memkey = key.memtable_key();
+  // 对table进行遍历的iterator
   Table::Iterator iter(&table_);
+  // seek到key的位置
   iter.Seek(memkey.data());
-  if (iter.Valid()) {
+  if (iter.Valid()) { // Valid为true表示seek成功
+    // 下面的逻辑就是按照数据的格式来拿到value了
     // entry format is:
     //    klength  varint32
     //    userkey  char[klength]

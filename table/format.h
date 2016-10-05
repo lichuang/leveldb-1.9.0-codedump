@@ -45,6 +45,7 @@ class BlockHandle {
 
 // Footer encapsulates the fixed information stored at the tail
 // end of every table file.
+// 封装footer信息的类
 class Footer {
  public:
   Footer() { }
@@ -67,14 +68,15 @@ class Footer {
   // Encoded length of a Footer.  Note that the serialization of a
   // Footer will always occupy exactly this many bytes.  It consists
   // of two block handles and a magic number.
+  // footer的长度，为两个block的长度+8字节的magic长度
   enum {
     kEncodedLength = 2*BlockHandle::kMaxEncodedLength + 8
   };
 
  private:
   // 一个footer包含两个Block
-  BlockHandle metaindex_handle_;
-  BlockHandle index_handle_;
+  BlockHandle metaindex_handle_;  // meta block
+  BlockHandle index_handle_;      // index block
 };
 
 // kTableMagicNumber was picked by running

@@ -195,6 +195,8 @@ inline bool ParseInternalKey(const Slice& internal_key,
 }
 
 // A helper class useful for DBImpl::Get()
+// 这个类用于把key+seq+t写入到数据中，方便在查询时使用的
+// 但是针对不同的key，有不同的格式
 class LookupKey {
  public:
   // Initialize *this for looking up user_key at a snapshot with
@@ -231,6 +233,7 @@ class LookupKey {
   void operator=(const LookupKey&);
 };
 
+// 把析构函数变为inline为了性能
 inline LookupKey::~LookupKey() {
   if (start_ != space_) delete[] start_;
 }

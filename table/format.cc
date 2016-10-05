@@ -66,6 +66,7 @@ Status Footer::DecodeFrom(Slice* input) {
   return result;
 }
 
+// 根据传入的handle、options在file中读取数据，返回的结果在result中。
 Status ReadBlock(RandomAccessFile* file,
                  const ReadOptions& options,
                  const BlockHandle& handle,
@@ -79,17 +80,20 @@ Status ReadBlock(RandomAccessFile* file,
   size_t n = static_cast<size_t>(handle.size());
   char* buf = new char[n + kBlockTrailerSize];
   Slice contents;
+  // 根据offset和size来读取数据
   Status s = file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
   if (!s.ok()) {
     delete[] buf;
     return s;
   }
+  // 校验长度
   if (contents.size() != n + kBlockTrailerSize) {
     delete[] buf;
     return Status::Corruption("truncated block read");
   }
 
   // Check the crc of the type and the block contents
+  // 校验内容
   const char* data = contents.data();    // Pointer to where Read put the data
   if (options.verify_checksums) {
     const uint32_t crc = crc32c::Unmask(DecodeFixed32(data + n + 1));
