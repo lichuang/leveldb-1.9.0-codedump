@@ -22,6 +22,7 @@
 
 namespace leveldb {
 
+// 将数据的长度和内容封装在一起 
 class Slice {
  public:
   // Create an empty slice.

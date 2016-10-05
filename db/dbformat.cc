@@ -19,7 +19,7 @@ static uint64_t PackSequenceAndType(uint64_t seq, ValueType t) {
 void AppendInternalKey(std::string* result, const ParsedInternalKey& key) {
   // 首先存放字符串
   result->append(key.user_key.data(), key.user_key.size());
-  // 然后存放SequenceNumber
+  // 然后存放SequenceNumber+type
   PutFixed64(result, PackSequenceAndType(key.sequence, key.type));
 }
 
@@ -58,9 +58,10 @@ int InternalKeyComparator::Compare(const Slice& akey, const Slice& bkey) const {
   // 首先比较UserKey是否相等
   int r = user_comparator_->Compare(ExtractUserKey(akey), ExtractUserKey(bkey));
   if (r == 0) {
-	// 然后比较SequenceNumber
+	  // 然后比较SequenceNumber
     const uint64_t anum = DecodeFixed64(akey.data() + akey.size() - 8);
     const uint64_t bnum = DecodeFixed64(bkey.data() + bkey.size() - 8);
+    // 因为seqnum是全局分配的单调递增数据，所以大的seq说明是出现在后面的数据
     if (anum > bnum) {
       r = -1;
     } else if (anum < bnum) {
@@ -77,6 +78,7 @@ void InternalKeyComparator::FindShortestSeparator(
   Slice user_start = ExtractUserKey(*start);
   Slice user_limit = ExtractUserKey(limit);
   std::string tmp(user_start.data(), user_start.size());
+  // 先调用user_comparator_进行比较
   user_comparator_->FindShortestSeparator(&tmp, user_limit);
   if (tmp.size() < user_start.size() &&
       user_comparator_->Compare(user_start, tmp) < 0) {
@@ -92,6 +94,7 @@ void InternalKeyComparator::FindShortestSeparator(
 void InternalKeyComparator::FindShortSuccessor(std::string* key) const {
   Slice user_key = ExtractUserKey(*key);
   std::string tmp(user_key.data(), user_key.size());
+  // 先调用user_comparator_进行比较
   user_comparator_->FindShortSuccessor(&tmp);
   if (tmp.size() < user_key.size() &&
       user_comparator_->Compare(user_key, tmp) < 0) {

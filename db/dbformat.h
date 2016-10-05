@@ -19,9 +19,11 @@ namespace leveldb {
 // Grouping of constants.  We may want to make some of these
 // parameters set via options.
 namespace config {
+// 最大level数量
 static const int kNumLevels = 7;
 
 // Level-0 compaction is started when we hit this many files.
+// level 0级sstable文件数量超过这个阈值时触发compact
 static const int kL0_CompactionTrigger = 4;
 
 // Soft limit on number of level-0 files.  We slow down writes at this point.
@@ -29,7 +31,7 @@ static const int kL0_CompactionTrigger = 4;
 static const int kL0_SlowdownWritesTrigger = 8;
 
 // Maximum number of level-0 files.  We stop writes at this point.
-// 0级文件数量达到这个阈值时，将暂停写操作
+// 0级文件数量达到这个阈值时，将暂停写操作，直到compact memtable操作完成
 static const int kL0_StopWritesTrigger = 12;
 
 // Maximum level to which a new compacted memtable is pushed if it
@@ -38,6 +40,7 @@ static const int kL0_StopWritesTrigger = 12;
 // expensive manifest file operations.  We do not push all the way to
 // the largest level since that can generate a lot of wasted disk
 // space if the same key space is being repeatedly overwritten.
+// memtable dump成的sstable，允许推向的最高level
 static const int kMaxMemCompactLevel = 2;
 
 }  // namespace config
@@ -114,6 +117,7 @@ inline ValueType ExtractValueType(const Slice& internal_key) {
 
 // A comparator for internal keys that uses a specified comparator for
 // the user key portion and breaks ties by decreasing sequence number.
+// db内部实现key排序时使用的比较方法
 class InternalKeyComparator : public Comparator {
  private:
   const Comparator* user_comparator_;
@@ -216,6 +220,7 @@ class LookupKey {
   //                                    <-- end_
   // The array is a suitable MemTable key.
   // The suffix starting with "userkey" can be used as an InternalKey.
+  // 对 memtable 进行 lookup 时使用 [start,end], 对 sstable lookup 时使用[kstart, end]。
   const char* start_;
   const char* kstart_;
   const char* end_;

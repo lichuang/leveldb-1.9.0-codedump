@@ -20,10 +20,13 @@
 
 namespace leveldb {
 
+// compact 过程中， level-0 中的 sstable 由 memtable 直接 dump 生成，不做大小限制
+// 非 level-0 中的 sstable 的大小设定为 kTargetFileSize
 static const int kTargetFileSize = 2 * 1048576;
 
 // Maximum bytes of overlaps in grandparent (i.e., level+2) before we
 // stop building a single file in a level->level+1 compaction.
+// compact过程中，允许level-n与level-n+2之间产生overlap的数据size
 static const int64_t kMaxGrandParentOverlapBytes = 10 * kTargetFileSize;
 
 // Maximum number of bytes in all compacted files.  We avoid expanding
@@ -1303,12 +1306,14 @@ Compaction* VersionSet::PickCompaction() {
 
   // We prefer compactions triggered by too much data in a level over
   // the compactions triggered by seeks.
-  // compaction_score_在VersionSet::Finalize中计算
+  // compaction_score_在VersionSet::Finalize中计算,
+  // 这种情况是某个级别的文件尺寸大小超过了阈值需要compact
   const bool size_compaction = (current_->compaction_score_ >= 1);
   // file_to_compact_在Version::UpdateStats函数中计算
+  // 这种情况是某个文件的seek次数太多，需要compact
   const bool seek_compaction = (current_->file_to_compact_ != NULL);
   if (size_compaction) {
-	// 如果有compaction_score_ >= 1的情况,优先考虑这种情况
+	  // 如果有compaction_score_ >= 1的情况,优先考虑这种情况
     level = current_->compaction_level_;
     assert(level >= 0);
     assert(level+1 < config::kNumLevels);
@@ -1330,8 +1335,8 @@ Compaction* VersionSet::PickCompaction() {
       c->inputs_[0].push_back(current_->files_[level][0]);
     }
   } else if (seek_compaction) {
-	// 然后才考虑file_to_compact_不为空的情况
-	// file_to_compact_是allow_seeks为0的等级
+	  // 然后才考虑file_to_compact_不为空的情况
+	  // file_to_compact_是allow_seeks为0的等级
     level = current_->file_to_compact_level_;
     c = new Compaction(level);
     c->inputs_[0].push_back(current_->file_to_compact_);
@@ -1344,7 +1349,7 @@ Compaction* VersionSet::PickCompaction() {
 
   // Files in level 0 may overlap each other, so pick up all overlapping ones
   if (level == 0) {
-	// 由于0级可能有多个文件的key重复现象,所以如果是0级那么需要把满足范围的文件一起拿到
+	  // 由于0级可能有多个文件的key重复现象,所以如果是0级那么需要把满足范围的文件一起拿到
     InternalKey smallest, largest;
     GetRange(c->inputs_[0], &smallest, &largest);
     // Note that the next call will discard the file we placed in
@@ -1533,9 +1538,11 @@ bool Compaction::IsBaseLevelForKey(const Slice& user_key) {
   return true;
 }
 
+// 判断这个key的加入会不会使得当前output的sstable和grantparents有太多的overlap
 bool Compaction::ShouldStopBefore(const Slice& internal_key) {
   // Scan to find earliest grandparent file that contains key.
   const InternalKeyComparator* icmp = &input_version_->vset_->icmp_;
+  // 寻找爷爷辈级别的文件中含有这个key的最小文件
   while (grandparent_index_ < grandparents_.size() &&
       icmp->Compare(internal_key,	// 当传入的internal_key一直大于该文件的最大key时这个循环一直下去
                     grandparents_[grandparent_index_]->largest.Encode()) > 0) {
@@ -1549,7 +1556,7 @@ bool Compaction::ShouldStopBefore(const Slice& internal_key) {
 
   if (overlapped_bytes_ > kMaxGrandParentOverlapBytes) {
     // Too much overlap for current output; start new output
-	// 如果overlap大小超过了一定范围,返回true
+	  // 如果overlap大小超过了一定范围,返回true
     overlapped_bytes_ = 0;
     return true;
   } else {
