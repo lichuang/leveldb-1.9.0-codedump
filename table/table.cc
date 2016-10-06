@@ -35,6 +35,7 @@ struct Table::Rep {
   Block* index_block;
 };
 
+// 从文件file中读取table返回
 Status Table::Open(const Options& options,
                    RandomAccessFile* file,
                    uint64_t size,

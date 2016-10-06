@@ -38,7 +38,7 @@ static const int64_t kExpandedCompactionByteSizeLimit = 25 * kTargetFileSize;
 static double MaxBytesForLevel(int level) {
   // Note: the result for level zero is not really used since we set
   // the level-0 compaction threshold based on number of files.
-  // 0,1级的大小是1M
+  // 0,1级的大小是10M
   double result = 10 * 1048576.0;  // Result for both level-0 and level-1
   while (level > 1) {
     // 每多一级，大小翻10倍
@@ -97,6 +97,7 @@ Version::~Version() {
   }
 }
 
+// 找到最小的数组索引i,满足 files[i]->largest >= key
 // 二分法查找
 int FindFile(const InternalKeyComparator& icmp,
              const std::vector<FileMetaData*>& files,
@@ -142,6 +143,7 @@ bool SomeFileOverlapsRange(
     const Slice* smallest_user_key,
     const Slice* largest_user_key) {
   const Comparator* ucmp = icmp.user_comparator();
+  // 如果不是排序过而且没有交集的文件集合，那需要遍历所有文件
   if (!disjoint_sorted_files) {
     // Need to check against all files
     for (size_t i = 0; i < files.size(); i++) {
@@ -156,19 +158,23 @@ bool SomeFileOverlapsRange(
     return false;
   }
 
+  // 否则这些文件都是进行排序的，二分查找就可以了
   // Binary search over file list
   uint32_t index = 0;
   if (smallest_user_key != NULL) {
+    // 在smallest_user_key不为NULL的情况下，先从这些文件中找到比smallest_user_key大的最小索引
     // Find the earliest possible internal key for smallest_user_key
     InternalKey small(*smallest_user_key, kMaxSequenceNumber,kValueTypeForSeek);
     index = FindFile(icmp, files, small.Encode());
   }
 
+  // 如果索引值比文件集合的数量大，直接返回false了
   if (index >= files.size()) {
     // beginning of range is after all files, so no overlap.
     return false;
   }
 
+  // 接着从index开始找是否有比largest_user_key小的文件
   return !BeforeFile(ucmp, largest_user_key, files[index]);
 }
 
@@ -253,6 +259,7 @@ Iterator* Version::NewConcatenatingIterator(const ReadOptions& options,
 
 void Version::AddIterators(const ReadOptions& options,
                            std::vector<Iterator*>* iters) {
+  // 对于0级文件，全部添加进来，因为其中可能有重叠
   // Merge all level zero files together since they may overlap
   for (size_t i = 0; i < files_[0].size(); i++) {
     iters->push_back(
@@ -260,6 +267,7 @@ void Version::AddIterators(const ReadOptions& options,
             options, files_[0][i]->number, files_[0][i]->file_size));
   }
 
+  // 对于>0级文件，使用NewConcatenatingIterator类型的iterator
   // For levels > 0, we can use a concatenating iterator that sequentially
   // walks through the non-overlapping files in the level, opening them
   // lazily.

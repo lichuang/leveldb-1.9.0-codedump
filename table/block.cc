@@ -28,7 +28,7 @@ Block::Block(const BlockContents& contents)
   if (size_ < sizeof(uint32_t)) {
     size_ = 0;  // Error marker
   } else {
-	// 检查restart_offset_是否非法
+	  // 检查restart_offset_是否非法
     restart_offset_ = size_ - (1 + NumRestarts()) * sizeof(uint32_t);
     if (restart_offset_ > size_ - sizeof(uint32_t)) {
       // The size is too small for NumRestarts() and therefore
@@ -51,6 +51,14 @@ Block::~Block() {
 //
 // If any errors are detected, returns NULL.  Otherwise, returns a
 // pointer to the key delta (just past the three decoded values).
+//
+// decode 一个record
+// record的格式：
+//  shared key size(varint32)
+//  nonshared key size(varint32)
+//  value size(varint32)
+//  nonshared key
+//  value
 static inline const char* DecodeEntry(const char* p, const char* limit,
                                       uint32_t* shared,
                                       uint32_t* non_shared,
@@ -96,9 +104,10 @@ class Block::Iter : public Iterator {
     return comparator_->Compare(a, b);
   }
 
+  // 返回该block下一个数据的offset
   // Return the offset in data_ just past the end of the current entry.
   inline uint32_t NextEntryOffset() const {
-	// 当前数据的起始位置 + 尺寸 - 整个数据块的起始位置 = 下一块数据的offset
+	  // 当前数据的起始位置 + 尺寸 - 整个数据块的起始位置 = 下一块数据的offset
     return (value_.data() + value_.size()) - data_;
   }
 
@@ -151,11 +160,14 @@ class Block::Iter : public Iterator {
     ParseNextKey();
   }
 
+  // 向前前进一步
   virtual void Prev() {
     assert(Valid());
 
     // Scan backwards to a restart point before current_
+    // 先保留当前的位置
     const uint32_t original = current_;
+    // 重启点>=原先位置的情况下循环一直进行下去
     while (GetRestartPoint(restart_index_) >= original) {
       if (restart_index_ == 0) {
         // No more entries
@@ -163,15 +175,19 @@ class Block::Iter : public Iterator {
         restart_index_ = num_restarts_;
         return;
       }
+      // 更改重启点索引
       restart_index_--;
     }
 
+    // 移动到指定的重启点
     SeekToRestartPoint(restart_index_);
+    // 一直到距离原先位置最近的offset
     do {
       // Loop until end of current entry hits the start of original entry
     } while (ParseNextKey() && NextEntryOffset() < original);
   }
 
+  // 二分法来查找
   virtual void Seek(const Slice& target) {
     // Binary search in restart array to find the last restart point
     // with a key < target
@@ -238,6 +254,7 @@ class Block::Iter : public Iterator {
     value_.clear();
   }
 
+  // 分析得到下一个key
   bool ParseNextKey() {
 	// 首先判断写一个数据没有进入restart数组的范围
     current_ = NextEntryOffset();

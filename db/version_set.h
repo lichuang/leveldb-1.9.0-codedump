@@ -50,6 +50,8 @@ extern int FindFile(const InternalKeyComparator& icmp,
 // largest==NULL represents a key largest than all keys in the DB.
 // REQUIRES: If disjoint_sorted_files, files[] contains disjoint ranges
 //           in sorted order.
+// 如果files文件集合中有覆盖[*smallest,*largest]范围的，就返回true
+// disjoint_sorted_files参数表示files文件集合中的文件是排序过而且没有交集的
 extern bool SomeFileOverlapsRange(
     const InternalKeyComparator& icmp,
     bool disjoint_sorted_files,
