@@ -14,6 +14,7 @@ namespace leveldb {
 
 class VersionSet;
 
+// 保存sstable文件元信息的类
 struct FileMetaData {
   int refs;
   int allowed_seeks;          // Seeks allowed until compaction
@@ -25,6 +26,8 @@ struct FileMetaData {
   FileMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0) { }
 };
 
+// 用于记录compact过程中，对Version进行的修改操作。
+// 待compact完成，再将这些修改操作一次性的应用到version上成为新的version
 class VersionEdit {
  public:
   VersionEdit() { Clear(); }
@@ -98,8 +101,11 @@ class VersionEdit {
   bool has_next_file_number_;
   bool has_last_sequence_;
 
+  // 要更新的<level,compact_pointer>集合
   std::vector< std::pair<int, InternalKey> > compact_pointers_;
+  // 待删除的sstable文件集合
   DeletedFileSet deleted_files_;
+  // 新文件
   std::vector< std::pair<int, FileMetaData> > new_files_;
 };
 

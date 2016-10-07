@@ -38,34 +38,42 @@ void VersionEdit::Clear() {
   new_files_.clear();
 }
 
+// encode VersionEdit的信息到字符串中返回
 void VersionEdit::EncodeTo(std::string* dst) const {
+  // encode comparator
   if (has_comparator_) {
     PutVarint32(dst, kComparator);
     PutLengthPrefixedSlice(dst, comparator_);
   }
+  // encode log number
   if (has_log_number_) {
     PutVarint32(dst, kLogNumber);
     PutVarint64(dst, log_number_);
   }
+  // encode prev log number
   if (has_prev_log_number_) {
     PutVarint32(dst, kPrevLogNumber);
     PutVarint64(dst, prev_log_number_);
   }
+  // encode next log number
   if (has_next_file_number_) {
     PutVarint32(dst, kNextFileNumber);
     PutVarint64(dst, next_file_number_);
   }
+  // encode seq num
   if (has_last_sequence_) {
     PutVarint32(dst, kLastSequence);
     PutVarint64(dst, last_sequence_);
   }
 
+  // encode compact pointer
   for (size_t i = 0; i < compact_pointers_.size(); i++) {
     PutVarint32(dst, kCompactPointer);
     PutVarint32(dst, compact_pointers_[i].first);  // level
     PutLengthPrefixedSlice(dst, compact_pointers_[i].second.Encode());
   }
 
+  // encode deleted files
   for (DeletedFileSet::const_iterator iter = deleted_files_.begin();
        iter != deleted_files_.end();
        ++iter) {
@@ -74,6 +82,7 @@ void VersionEdit::EncodeTo(std::string* dst) const {
     PutVarint64(dst, iter->second);  // file number
   }
 
+  // encode new files
   for (size_t i = 0; i < new_files_.size(); i++) {
     const FileMetaData& f = new_files_[i].second;
     PutVarint32(dst, kNewFile);

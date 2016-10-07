@@ -117,21 +117,27 @@ class Version {
   class LevelFileNumIterator;
   Iterator* NewConcatenatingIterator(const ReadOptions&, int level) const;
 
+  // 属于哪个VersionSet
   VersionSet* vset_;            // VersionSet to which this Version belongs
+  // 链表
   Version* next_;               // Next version in linked list
   Version* prev_;               // Previous version in linked list
+  // 计数器
   int refs_;                    // Number of live refs to this version
 
+  // 保存每个级别的文件meta信息集合
   // List of files per level
   std::vector<FileMetaData*> files_[config::kNumLevels];
 
   // Next file to compact based on seek stats.
+  // 下一次需要compact时的文件以及级别
   FileMetaData* file_to_compact_;
   int file_to_compact_level_;
 
   // Level that should be compacted next and its compaction score.
   // Score < 1 means compaction is not strictly needed.  These fields
   // are initialized by Finalize().
+  // 当前最大的compact分数以及对应的级别，在Finalize函数中进行计算
   double compaction_score_;
   int compaction_level_;
 
@@ -287,20 +293,33 @@ class VersionSet {
   const Options* const options_;
   TableCache* const table_cache_;
   const InternalKeyComparator icmp_;
+  // 下一个可用的 FileNumber
   uint64_t next_file_number_;
+  // manifest文件的number
   uint64_t manifest_file_number_;
+  // 最后用过的seq
   uint64_t last_sequence_;
+  // log文件的filenumber
   uint64_t log_number_;
+  // 辅助 log 文件的 FileNumber， 在 compact memtable 时，置为 0.
   uint64_t prev_log_number_;  // 0 or backing store for memtable being compacted
 
   // Opened lazily
+  // manifest 文件的封装
   WritableFile* descriptor_file_;
+  // // manifest 文件的writer
   log::Writer* descriptor_log_;
+  // 正在服务的 Version 链表
   Version dummy_versions_;  // Head of circular doubly-linked list of versions.
+  // 当前最新的的 Version
   Version* current_;        // == dummy_versions_.prev_
 
   // Per-level key at which the next compaction at that level should start.
   // Either an empty string, or a valid InternalKey.
+  // 为了尽量均匀 compact 每个 level，所以会将这一次 compact 的 end-key 作为
+  // // 下一次 compact 的 start-key。 compactor_pointer_就保存着每个 level
+  // // 下一次 compact 的 start-key.
+  // // 除了 current_外的 Version，并不会做 compact，所以这个值并不保存在 Version 中。
   std::string compact_pointer_[config::kNumLevels];
 
   // No copying allowed
@@ -308,6 +327,7 @@ class VersionSet {
   void operator=(const VersionSet&);
 };
 
+// 封装compact信息的类
 // A Compaction encapsulates information about a compaction.
 class Compaction {
  public:
@@ -356,14 +376,27 @@ class Compaction {
 
   explicit Compaction(int level);
 
+  // 待compact的level
   int level_;
+  // 生成sstable的最大size
   uint64_t max_output_file_size_;
+  // compact时当前的Version
   Version* input_version_;
+  // compact过程中的操作
   VersionEdit edit_;
 
   // Each compaction reads inputs from "level_" and "level_+1"
+  // 每个compact操作从leve和level+1来进行，所以数组只有两个元素
   std::vector<FileMetaData*> inputs_[2];      // The two sets of inputs
 
+  // 用于记录level+2级别重叠信息的变量
+  // 位于 level-n+2，并且与 compact 的 key-range 有 overlap 的 sstable。
+  // 保存 grandparents_是因为 compact 最终会生成一系列 level-n+1 的 sstable，
+  // 而如果生成的 sstable 与 level-n+2 中有过多的 overlap 的话，当 compact
+  // level-n+1 时，会产生过多的 merge，为了尽量避免这种情况， compact 过程中
+  // 需要检查与 level-n+2 中产生 overlap 的 size 并与
+  // 阈值 kMaxGrandParentOverlapBytes 做比较，
+  // 以便提前中止 compact。
   // State used to check for number of of overlapping grandparent files
   // (parent == level_ + 1, grandparent == level_ + 2)
   std::vector<FileMetaData*> grandparents_;
@@ -378,6 +411,12 @@ class Compaction {
   // is that we are positioned at one of the file ranges for each
   // higher level than the ones involved in this compaction (i.e. for
   // all L >= level_ + 2).
+  // compact 时，当 key 的 ValueType 是 kTypeDeletion 时，
+  // 要检查其在 level-n+1 以上是否存在（ IsBaseLevelForKey()）
+  // 来决定是否丢弃掉该 key。因为 compact 时， key 的遍历是顺序的，
+  // 所以每次检查从上一次检查结束的地方开始即可，
+  // level_ptrs_[i]中就记录了 input_version_->levels_[i]中， 上一次比较结束的
+  // sstable 的容器下标。
   size_t level_ptrs_[config::kNumLevels];
 };
 

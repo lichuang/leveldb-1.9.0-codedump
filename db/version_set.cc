@@ -1487,10 +1487,12 @@ void VersionSet::SetupOtherInputs(Compaction* c) {
   c->edit_.SetCompactPointer(level, largest);
 }
 
+// 返回一个Compaction指针，用于在level级别针对[begin,end]返回的数据进行compact操作
 Compaction* VersionSet::CompactRange(
     int level,
     const InternalKey* begin,
     const InternalKey* end) {
+  // 首先得到满足要求的文件集合到inputs变量中
   std::vector<FileMetaData*> inputs;
   current_->GetOverlappingInputs(level, begin, end, &inputs);
   if (inputs.empty()) {
@@ -1498,11 +1500,14 @@ Compaction* VersionSet::CompactRange(
   }
 
   // Avoid compacting too much in one shot in case the range is large.
+  // 避免出现compact太多文件的情况
+  // 首先得到该level的文件大小上限
   const uint64_t limit = MaxFileSizeForLevel(level);
   uint64_t total = 0;
   for (size_t i = 0; i < inputs.size(); i++) {
     uint64_t s = inputs[i]->file_size;
     total += s;
+    // 这里没有看懂。。。
     if (total >= limit) {
       inputs.resize(i + 1);
       break;
@@ -1544,6 +1549,7 @@ bool Compaction::IsTrivialMove() const {
           TotalFileSize(grandparents_) <= kMaxGrandParentOverlapBytes);
 }
 
+// 将这个compact中的所有文件输入到edit中作为待删除的文件
 void Compaction::AddInputDeletions(VersionEdit* edit) {
   for (int which = 0; which < 2; which++) {
     for (size_t i = 0; i < inputs_[which].size(); i++) {
@@ -1552,9 +1558,11 @@ void Compaction::AddInputDeletions(VersionEdit* edit) {
   }
 }
 
+// 检查在level + 2及更高的等级上,有没有找到user_key
+// 如果都没有找到，说明这个级别就是针对这个key的base level
 bool Compaction::IsBaseLevelForKey(const Slice& user_key) {
   // Maybe use binary search to find right entry instead of linear search?
-  // 检查在level + 2及更高的等级上,有没有找到user_key
+  // 以下使用的线性查找的办法，可以使用二分查找来替换这个算法？
   const Comparator* user_cmp = input_version_->vset_->icmp_.user_comparator();
   for (int lvl = level_ + 2; lvl < config::kNumLevels; lvl++) {
     const std::vector<FileMetaData*>& files = input_version_->files_[lvl];
@@ -1569,6 +1577,7 @@ bool Compaction::IsBaseLevelForKey(const Slice& user_key) {
         }
         break;
       }
+      // 每次检查完毕，都将这个计数器递增，这样下一次查找就从上一次停止查找的位置开始继续查找
       level_ptrs_[lvl]++;
     }
   }
