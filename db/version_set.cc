@@ -576,6 +576,7 @@ std::string Version::DebugString() const {
 class VersionSet::Builder {
  private:
   // Helper to sort by v->files_[file_number].smallest
+  // operator,用于比较文件元信息中的排序
   struct BySmallestKey {
     const InternalKeyComparator* internal_comparator;
 
@@ -592,14 +593,21 @@ class VersionSet::Builder {
     }
   };
 
+  // 排好序的FileMetaData集合，其中的compare就是前面的BySmallestKey
   typedef std::set<FileMetaData*, BySmallestKey> FileSet;
+  // 用于保存每个level待更新的文件
   struct LevelState {
+    // 已删除文件
     std::set<uint64_t> deleted_files;
+    // 待添加的文件
     FileSet* added_files;
   };
 
+  // 待更新的VersionSet
   VersionSet* vset_;
+  // 基准的Version
   Version* base_;
+  // 每个级别上都有什么需要更新的
   LevelState levels_[config::kNumLevels];
 
  public:
@@ -636,6 +644,7 @@ class VersionSet::Builder {
     base_->Unref();
   }
 
+  // 根据VersionEdit将前面做的改动应用到当前状态中
   // Apply all of the edits in *edit to the current state.
   void Apply(VersionEdit* edit) {
     // Update compaction pointers
@@ -758,6 +767,7 @@ class VersionSet::Builder {
     }
   }
 
+  // 判断某个文件是否需要添加进来
   void MaybeAddFile(Version* v, int level, FileMetaData* f) {
     if (levels_[level].deleted_files.count(f->number) > 0) {
       // 要删除的文件就不要添加了
