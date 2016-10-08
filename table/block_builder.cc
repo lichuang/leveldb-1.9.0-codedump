@@ -26,6 +26,26 @@
 //     num_restarts: uint32
 // restarts[i] contains the offset within the block of the ith restart point.
 
+// BlockBuilder用于生成前缀压缩的block：
+// 当保存一个key时，采用前缀压缩法，可以只保存非共享的前缀字符串。
+// 这个做法显著的降低了磁盘空间的消耗。
+// 除此之外，每隔K个key，就不采用前缀压缩算法，而是存储这个key字符串。
+// 这个位置，被称为“重启点”。每个block的尾部存储了这个block的所有重启点的偏移量，
+// 使用重启点，可以采用二分查找来定位一个key位于block的哪个范围中。
+// 值紧跟着存放在对应key的位置。
+//
+// 每个K-V键值对的格式：
+//  共享部分的大小：varint32
+//  非共享部分的大小：varint32
+//  值长度：varint32
+//  非共享key字符串数据：char[unshared_bytes]
+//  值：char[value_length]
+//  共享部分大小为0，代表这是重启点。
+//
+//  block剩余部分的格式：
+//    restart数组：uint32[num_restarts]
+//    num_restarts：uint32 重启点数量
+//    restart数组存放的是这个block所有重启点在block文件中的偏移量。
 #include "table/block_builder.h"
 
 #include <algorithm>
@@ -54,12 +74,14 @@ void BlockBuilder::Reset() {
   last_key_.clear();
 }
 
+// 预估算block文件的大小
 size_t BlockBuilder::CurrentSizeEstimate() const {
   return (buffer_.size() +                        // Raw data buffer
           restarts_.size() * sizeof(uint32_t) +   // Restart array
           sizeof(uint32_t));                      // Restart array length
 }
 
+// 写入重启点数组和重启点数量
 Slice BlockBuilder::Finish() {
   // Append restart array
   for (size_t i = 0; i < restarts_.size(); i++) {
@@ -78,8 +100,9 @@ void BlockBuilder::Add(const Slice& key, const Slice& value) {
          || options_->comparator->Compare(key, last_key_piece) > 0);
   size_t shared = 0;
   if (counter_ < options_->block_restart_interval) {
-	// 如果少于一个restart里面数据的数量,那么就继续塞进这个restart数据里面
+	  // 如果少于一个restart里面数据的数量,那么就继续塞进这个restart数据里面
     // See how much sharing to do with previous string
+    // 先算出来两者的最小长度
     const size_t min_length = std::min(last_key_piece.size(), key.size());
     // 计算共享部分的数据
     while ((shared < min_length) && (last_key_piece[shared] == key[shared])) {
@@ -93,6 +116,7 @@ void BlockBuilder::Add(const Slice& key, const Slice& value) {
   }
   const size_t non_shared = key.size() - shared;
 
+  // 下面就是按照格式来写数据了
   // Add "<shared><non_shared><value_size>" to buffer_
   PutVarint32(&buffer_, shared);
   PutVarint32(&buffer_, non_shared);
@@ -102,6 +126,7 @@ void BlockBuilder::Add(const Slice& key, const Slice& value) {
   buffer_.append(key.data() + shared, non_shared);
   buffer_.append(value.data(), value.size());
 
+  // 保存最后一次更新的key数据
   // Update state
   last_key_.resize(shared);
   last_key_.append(key.data() + shared, non_shared);
