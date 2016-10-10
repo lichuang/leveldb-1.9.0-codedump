@@ -80,6 +80,8 @@ void InternalKeyComparator::FindShortestSeparator(
   std::string tmp(user_start.data(), user_start.size());
   // 先调用user_comparator_进行比较
   user_comparator_->FindShortestSeparator(&tmp, user_limit);
+  // 如果查找出来的结果，tmp的大小变小了，但是tmp又比user_start大，
+  // 那么更新start为tmp
   if (tmp.size() < user_start.size() &&
       user_comparator_->Compare(user_start, tmp) < 0) {
     // User key has become shorter physically, but larger logically.

@@ -39,6 +39,7 @@ struct TableBuilder::Rep {
   // blocks.
   //
   // Invariant: r->pending_index_entry is true only if data_block is empty.
+	// pending_index_entry为true表示该data block还没有对应的index block保存它的索引位置,也就是说是data block的第一块数据
   bool pending_index_entry;
   BlockHandle pending_handle;  // Handle to add to index block
 
@@ -97,7 +98,7 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
   assert(!r->closed);
   if (!ok()) return;
   if (r->num_entries > 0) {
-	// 保证添加的key比原来最后一个key大(这一点是如何保证的???由调用者保证,调用时插入是顺序的)
+	  // 保证添加的key比原来最后一个key大(这一点是如何保证的???由调用者保证,调用时插入是顺序的)
     assert(r->options.comparator->Compare(key, Slice(r->last_key)) > 0);
   }
 

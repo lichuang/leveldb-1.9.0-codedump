@@ -44,7 +44,9 @@ class Comparator {
   // If *start < limit, changes *start to a short string in [start,limit).
   // Simple comparator implementations may return with *start unchanged,
   // i.e., an implementation of this method that does nothing is correct.
-  // 取得大于start但小于limit的最小值
+  // 如果*start < limit，就在[start,limit)中找到一个  
+  // 短字符串，并赋给*start返回  
+  // 简单的comparator实现可能不改变*start，这也是OK的
   virtual void FindShortestSeparator(
       std::string* start,
       const Slice& limit) const = 0;
@@ -52,7 +54,8 @@ class Comparator {
   // Changes *key to a short string >= *key.
   // Simple comparator implementations may return with *key unchanged,
   // i.e., an implementation of this method that does nothing is correct.
-  // 获得比start大的最小值
+  // 找一个>= *key的短字符串  
+  //简单的comparator实现可能不改变*key，这也是OK的
   virtual void FindShortSuccessor(std::string* key) const = 0;
 };
 
