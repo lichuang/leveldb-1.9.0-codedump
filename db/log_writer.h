@@ -16,6 +16,7 @@ class WritableFile;
 
 namespace log {
 
+// 用于写入log的类
 class Writer {
  public:
   // Create a writer that will append data to "*dest".

@@ -24,6 +24,7 @@ enum RecordType {
 };
 static const int kMaxRecordType = kLastType;
 
+// 32KB
 static const int kBlockSize = 32768;
 
 // Header is checksum (4 bytes), type (1 byte), length (2 bytes).

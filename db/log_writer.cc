@@ -46,6 +46,7 @@ Status Writer::AddRecord(const Slice& slice) {
       if (leftover > 0) {
         // Fill the trailer (literal below relies on kHeaderSize being 7)
         assert(kHeaderSize == 7);
+        // 剩余部分填0
         dest_->Append(Slice("\x00\x00\x00\x00\x00\x00", leftover));
       }
       // 切换到新的block
@@ -90,6 +91,7 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
   assert(block_offset_ + kHeaderSize + n <= kBlockSize);
 
   // Format the header
+  // 写block的header
   char buf[kHeaderSize];
   // 写数据大小
   buf[4] = static_cast<char>(n & 0xff);

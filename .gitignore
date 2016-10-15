@@ -1,3 +1,5 @@
 cscope*
 tags
 *swp
+*.o
+lib*

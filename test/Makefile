@@ -1,2 +1,2 @@
 all:
-	g++ -o main -g test.cpp -lleveldb -lpthread
+	g++ -o main -g test.cpp -I../include ../libleveldb.a -lpthread
