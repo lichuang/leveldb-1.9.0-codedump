@@ -118,6 +118,7 @@ bool ParseFileName(const std::string& fname,
   return true;
 }
 
+// 写current文件
 Status SetCurrentFile(Env* env, const std::string& dbname,
                       uint64_t descriptor_number) {
   // Remove leading "dbname/" and add newline to manifest file name
@@ -128,6 +129,7 @@ Status SetCurrentFile(Env* env, const std::string& dbname,
   std::string tmp = TempFileName(dbname, descriptor_number);
   Status s = WriteStringToFileSync(env, contents.ToString() + "\n", tmp);
   if (s.ok()) {
+    // 注意写CURRENT文件是先写一个tmp文件，只有在写成功之后才重命名为CURRENT文件的
     s = env->RenameFile(tmp, CurrentFileName(dbname));
   }
   if (!s.ok()) {

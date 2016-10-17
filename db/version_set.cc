@@ -856,7 +856,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     builder.Apply(edit);
     builder.SaveTo(v);
   }
-  // 计算compact score和compact level
+  // 计算这个新version的compact score和compact level
   Finalize(v);
 
   // Initialize new descriptor log file if necessary by creating
@@ -864,8 +864,8 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
   std::string new_manifest_file;
   Status s;
   if (descriptor_log_ == NULL) {
-	  // 如果没有descriptor_log_,也就是当前没有manifest文件,那么创建一个出来写入当前的snapsot
-	  // 可见manifest文件的创建是lazy的,直到用上的时候才会创建
+    // 这里没有必要进行unlock操作，因为只有在第一次调用，也就是打开数据库的时候
+    // 才会走到这个路径里面来
     // No reason to unlock *mu here since we only hit this path in the
     // first call to LogAndApply (when opening the database).
     assert(descriptor_file_ == NULL);
@@ -894,7 +894,9 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
       }
       if (!s.ok()) {
         Log(options_->info_log, "MANIFEST write: %s\n", s.ToString().c_str());
-        if (ManifestContains(record)) {
+        if (ManifestContains(record)) { 
+          // 在出错的情况下，判断一下是否已经有对应的记录了
+          // 如果已经有对应的记录，就将s改为OK
           Log(options_->info_log,
               "MANIFEST contains log record despite error; advancing to new "
               "version to prevent mismatch between in-memory and logged state");
@@ -1144,6 +1146,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
   return log->AddRecord(record);
 }
 
+// 返回某个级别文件数量
 int VersionSet::NumLevelFiles(int level) const {
   assert(level >= 0);
   assert(level < config::kNumLevels);
@@ -1247,16 +1250,22 @@ int64_t VersionSet::NumLevelBytes(int level) const {
   return TotalFileSize(current_->files_[level]);
 }
 
+// 返回下一个级别中有重叠的最大数量
 int64_t VersionSet::MaxNextLevelOverlappingBytes() {
   int64_t result = 0;
   std::vector<FileMetaData*> overlaps;
   for (int level = 1; level < config::kNumLevels - 1; level++) {
+    // 从1级开始遍历
     for (size_t i = 0; i < current_->files_[level].size(); i++) {
+      // 遍历current_中每个级别的所有文件
       const FileMetaData* f = current_->files_[level][i];
+      // 拿到下一个级别针对该该文件有覆盖的文件集合返回到overlaps参数中
       current_->GetOverlappingInputs(level+1, &f->smallest, &f->largest,
                                      &overlaps);
+      // 根据overlaps集合得到这个重叠文件的大小集合
       const int64_t sum = TotalFileSize(overlaps);
       if (sum > result) {
+        // 如果比当前结果大就更新
         result = sum;
       }
     }
