@@ -217,6 +217,7 @@ void DBImpl::MaybeIgnoreError(Status* s) const {
   }
 }
 
+// 删除文件
 void DBImpl::DeleteObsoleteFiles() {
   // Make a set of all of the live files
   std::set<uint64_t> live = pending_outputs_;
@@ -230,16 +231,17 @@ void DBImpl::DeleteObsoleteFiles() {
     if (ParseFileName(filenames[i], &number, &type)) {
       bool keep = true;
       switch (type) {
-        case kLogFile:
+        case kLogFile:  // log 文件
+          // 只保留比当前log num大的文件
           keep = ((number >= versions_->LogNumber()) ||
                   (number == versions_->PrevLogNumber()));
           break;
-        case kDescriptorFile:
+        case kDescriptorFile: // manifest文件
           // Keep my manifest file, and any newer incarnations'
           // (in case there is a race that allows other incarnations)
           keep = (number >= versions_->ManifestFileNumber());
           break;
-        case kTableFile:
+        case kTableFile:  // sstable 文件
           keep = (live.find(number) != live.end());
           break;
         case kTempFile:
@@ -692,6 +694,7 @@ Status DBImpl::BackgroundCompaction() {
   if (c == NULL) {
     // Nothing to do
   } else if (!is_manual && c->IsTrivialMove()) {
+    // 这种情况下将level层的文件直接移动到leve+1层
     // Move file to next level
     assert(c->num_input_files(0) == 1);
     FileMetaData* f = c->input(0, 0);
@@ -951,7 +954,9 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         //     smaller sequence numbers will be dropped in the next
         //     few iterations of this loop (by rule (A) above).
         // Therefore this deletion marker is obsolete and can be dropped.
-    	  // 如果是删除操作,而且在更高层找不到这个user_key了,同时它的sequence比最小的snapshot还小,那么就drop掉
+    	  // 如果是删除操作,
+        // 而且在更高层找不到这个user_key了,
+        // 同时它的sequence比最小的snapshot还小,那么就drop掉
         drop = true;
       }
 

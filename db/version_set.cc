@@ -1485,7 +1485,8 @@ void VersionSet::SetupOtherInputs(Compaction* c) {
   // (parent == level+1; grandparent == level+2)
   // 取得level+2 中重叠的文件放入grandparents_
   if (level + 2 < config::kNumLevels) {
-	// 计算level + 2中也在[all_start,all_limit]范围的文件
+	  // 计算level + 2中也在[all_start,all_limit]范围的文件
+    // 用于后面计算level+2级别的overlap时使用
     current_->GetOverlappingInputs(level + 2, &all_start, &all_limit,
                                    &c->grandparents_);
   }
