@@ -89,8 +89,10 @@ TwoLevelIterator::~TwoLevelIterator() {
 }
 
 void TwoLevelIterator::Seek(const Slice& target) {
+  // index iterator定位到目标所在位置
   index_iter_.Seek(target);
   InitDataBlock();
+  // data iterator定位到目标所在位置
   if (data_iter_.iter() != NULL) data_iter_.Seek(target);
   SkipEmptyDataBlocksForward();
 }
@@ -121,8 +123,10 @@ void TwoLevelIterator::Prev() {
   SkipEmptyDataBlocksBackward();
 }
 
-
+// 向前跳过空的block
 void TwoLevelIterator::SkipEmptyDataBlocksForward() {
+  // data_iter_.iter() == NULL || !data_iter_.Valid()这两个条件是data迭代器指针非法
+  // 所以循环就是在data迭代器指针非法的情况下继续循环
   while (data_iter_.iter() == NULL || !data_iter_.Valid()) { // 使用data_iter来遍历data block
     // Move to next block
     if (!index_iter_.Valid()) {
@@ -136,7 +140,10 @@ void TwoLevelIterator::SkipEmptyDataBlocksForward() {
   }
 }
 
+// 向后跳过空的block
 void TwoLevelIterator::SkipEmptyDataBlocksBackward() {
+  // data_iter_.iter() == NULL || !data_iter_.Valid()这两个条件是data迭代器指针非法
+  // 所以循环就是在data迭代器指针非法的情况下继续循环
   while (data_iter_.iter() == NULL || !data_iter_.Valid()) { // 使用data_iter来遍历data block
     // Move to next block
     if (!index_iter_.Valid()) {
@@ -155,6 +162,7 @@ void TwoLevelIterator::SetDataIterator(Iterator* data_iter) {
   data_iter_.Set(data_iter);
 }
 
+// 初始化data block指针
 void TwoLevelIterator::InitDataBlock() {
   if (!index_iter_.Valid()) {
 	// 如果index block的迭代器无效,将data block iterator置为NULL

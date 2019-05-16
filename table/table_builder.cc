@@ -251,6 +251,7 @@ Status TableBuilder::Finish() {
 
   // Write index block
   if (ok()) {
+    // 如果还有pending的index，先写入这部分数据
     if (r->pending_index_entry) {
       r->options.comparator->FindShortSuccessor(&r->last_key);
       std::string handle_encoding;
@@ -258,6 +259,7 @@ Status TableBuilder::Finish() {
       r->index_block.Add(r->last_key, Slice(handle_encoding));
       r->pending_index_entry = false;
     }
+    // 写入index block
     WriteBlock(&r->index_block, &index_block_handle);
   }
 

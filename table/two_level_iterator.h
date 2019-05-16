@@ -20,6 +20,10 @@ struct ReadOptions;
 //
 // Uses a supplied function to convert an index_iter value into
 // an iterator over the contents of the corresponding block.
+// 返回两层级迭代器。一个两层级迭代器包含一个索引迭代器，索引迭代器
+// 的值存储的是block中的键值对。
+// 简单说，两层级迭代器，内部既有index迭代器，又有data block迭代器，因为sstable中有index和data block的
+// 另外传入的block_function可以将index迭代器的值转换为对应block的值
 extern Iterator* NewTwoLevelIterator(
     Iterator* index_iter,
     Iterator* (*block_function)(

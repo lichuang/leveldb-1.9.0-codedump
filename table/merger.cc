@@ -33,26 +33,35 @@ class MergingIterator : public Iterator {
   }
 
   virtual void SeekToFirst() {
+    // 所有的成员都seek到第一个元素
     for (int i = 0; i < n_; i++) {
       children_[i].SeekToFirst();
     }
+    // 找到其中最小的child
     FindSmallest();
+    // 修改方向为向前查找
     direction_ = kForward;
   }
 
   virtual void SeekToLast() {
+    // 所有的成员都seek到最后一个元素
     for (int i = 0; i < n_; i++) {
       children_[i].SeekToLast();
     }
+    // 找到其中最大的child
     FindLargest();
+    // 修改方向为向后查找
     direction_ = kReverse;
   }
 
   virtual void Seek(const Slice& target) {
+    // 所有成员都找到target的位置
     for (int i = 0; i < n_; i++) {
       children_[i].Seek(target);
     }
+    // 找到最小的
     FindSmallest();
+    // 修改方向为向前查找
     direction_ = kForward;
   }
 
@@ -64,13 +73,17 @@ class MergingIterator : public Iterator {
     // true for all of the non-current_ children since current_ is
     // the smallest child and key() == current_->key().  Otherwise,
     // we explicitly position the non-current_ children.
-    if (direction_ != kForward) {
+    // 以下保证所有child都在key()位置之后。
+    // 如果当前是向前的方向，那么这个自然已经得到了保证，因为current就是当前最小的child，
+    // 同时满足key() == current_->key()
+    // 否则，就需要明确的移动到对应的位置去
+    if (direction_ != kForward) { // 只有在方向不是向前的情况下才做这个操作
       // 保证所有的child位置都在current的key之后
       for (int i = 0; i < n_; i++) {
         IteratorWrapper* child = &children_[i];
-        if (child != current_) {
-          child->Seek(key());
-          if (child->Valid() &&
+        if (child != current_) {  // 如果不是current的child
+          child->Seek(key()); // 移动到key对应的位置
+          if (child->Valid() && // 如果child当前的key就是current->key，那么向前移动一步
               comparator_->Compare(key(), child->key()) == 0) {
             child->Next();
           }
@@ -81,12 +94,15 @@ class MergingIterator : public Iterator {
 
     // current向前走一步
     current_->Next();
+    // 找到最小的child
     FindSmallest();
   }
 
   virtual void Prev() {
     assert(Valid());
 
+    // 这段代码不做解释了，见上面的Next操作，类似的
+    
     // Ensure that all children are positioned before key().
     // If we are moving in the reverse direction, it is already
     // true for all of the non-current_ children since current_ is
@@ -116,11 +132,13 @@ class MergingIterator : public Iterator {
     FindLargest();
   }
 
+  // key返回current key
   virtual Slice key() const {
     assert(Valid());
     return current_->key();
   }
 
+  // key返回current value 
   virtual Slice value() const {
     assert(Valid());
     return current_->value();
@@ -195,10 +213,13 @@ void MergingIterator::FindLargest() {
 Iterator* NewMergingIterator(const Comparator* cmp, Iterator** list, int n) {
   assert(n >= 0);
   if (n == 0) {
+    // 空迭代器
     return NewEmptyIterator();
   } else if (n == 1) {
+    // 只有一个元素
     return list[0];
   } else {
+    // 否则创建合并的迭代器
     return new MergingIterator(cmp, list, n);
   }
 }

@@ -1026,6 +1026,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     stats.bytes_written += compact->outputs[i].file_size;
   }
 
+  // 保存结果之前加锁
   mutex_.Lock();
   stats_[compact->compaction->level() + 1].Add(stats);
 
@@ -1066,12 +1067,15 @@ Iterator* DBImpl::NewInternalIterator(const ReadOptions& options,
 
   // Collect together all needed child iterators
   std::vector<Iterator*> list;
+  // 插入memtable的iterator
   list.push_back(mem_->NewIterator());
   mem_->Ref();
   if (imm_ != NULL) {
+    // 如果有imm table，插入immu table的iterator
     list.push_back(imm_->NewIterator());
     imm_->Ref();
   }
+  // 将sstable文件的iterator添加进来
   versions_->current()->AddIterators(options, &list);
   Iterator* internal_iter =
       NewMergingIterator(&internal_comparator_, &list[0], list.size());

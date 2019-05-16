@@ -136,6 +136,7 @@ static bool BeforeFile(const Comparator* ucmp,
           ucmp->Compare(*user_key, f->smallest.user_key()) < 0);
 }
 
+// 返回files里面的文件，是否与[smallest,largest]范围有重叠
 bool SomeFileOverlapsRange(
     const InternalKeyComparator& icmp,
     bool disjoint_sorted_files,
@@ -184,6 +185,8 @@ bool SomeFileOverlapsRange(
 // 16-byte value containing the file number and file size, both
 // encoded using EncodeFixed64.
 // LevelFileNumIterator提供了遍历一组排序好的FileMetaData(也就是sstable文件)的迭代器
+// key()：文件中的最大key
+// value()：16byte保存了文件号以及文件大小的值，两个数字都是fixed64类型
 class Version::LevelFileNumIterator : public Iterator {
  public:
   LevelFileNumIterator(const InternalKeyComparator& icmp,
@@ -216,10 +219,12 @@ class Version::LevelFileNumIterator : public Iterator {
       index_--;
     }
   }
+  // 迭代器的key是当前文件的最大key
   Slice key() const {
     assert(Valid());
     return (*flist_)[index_]->largest.Encode();
   }
+  // 迭代器的value是当前文件的序号和文件大小的序列化值
   Slice value() const {
     assert(Valid());
     EncodeFixed64(value_buf_, (*flist_)[index_]->number);
@@ -244,6 +249,7 @@ static Iterator* GetFileIterator(void* arg,
     return NewErrorIterator(
         Status::Corruption("FileReader invoked with unexpected value"));
   } else {
+    // 根据前面LevelFileNumIterator迭代器的值decode出来得到cache的iterator
     return cache->NewIterator(options,
                               DecodeFixed64(file_value.data()),
                               DecodeFixed64(file_value.data() + 8));
@@ -308,6 +314,7 @@ static void SaveValue(void* arg, const Slice& ikey, const Slice& v) {
   }
 }
 
+// 文件序号越大的越新
 static bool NewestFirst(FileMetaData* a, FileMetaData* b) {
   return a->number > b->number;
 }
@@ -332,11 +339,14 @@ Status Version::Get(const ReadOptions& options,
   // in an smaller level, later levels are irrelevant.
   std::vector<FileMetaData*> tmp;
   FileMetaData* tmp2;
+  // 以下的循环，从0级开始查询key
   for (int level = 0; level < config::kNumLevels; level++) {
     size_t num_files = files_[level].size();
+    // 这个级别没有文件，忽略
     if (num_files == 0) continue;
 
     // Get the list of files to search in this level
+    // files保存本级查询到的文件数据链表
     FileMetaData* const* files = &files_[level][0];
     if (level == 0) {
       // Level-0 files may overlap each other.  Find all files that
@@ -354,6 +364,7 @@ Status Version::Get(const ReadOptions& options,
 
       // 0级文件key有可能重叠，需要对文件进行排序，最新的文件优先
       std::sort(tmp.begin(), tmp.end(), NewestFirst);
+      // files指向排序后的tmp数组，num_files保存文件数量
       files = &tmp[0];
       num_files = tmp.size();
     } else {
@@ -373,6 +384,7 @@ Status Version::Get(const ReadOptions& options,
           files = NULL;
           num_files = 0;
         } else {
+          // 指向文件，数量为1
           files = &tmp2;
           num_files = 1;
         }
@@ -471,6 +483,7 @@ int Version::PickLevelForMemTableOutput(
   int level = 0;
   // 先判断0级
   if (!OverlapInLevel(0, &smallest_user_key, &largest_user_key)) {
+    // 0级没有查询到，继续往上查找
     // Push to next level if there is no overlap in next level,
     // and the #bytes overlapping in the level after that are limited.
     InternalKey start(smallest_user_key, kMaxSequenceNumber, kValueTypeForSeek);
@@ -492,6 +505,7 @@ int Version::PickLevelForMemTableOutput(
       level++;
     }
   }
+  // 到了这里就是0级查询到了，返回level（=0）
   return level;
 }
 
@@ -531,11 +545,16 @@ void Version::GetOverlappingInputs(
         if (begin != NULL && user_cmp->Compare(file_start, user_begin) < 0) {
           // 如果当前文件的最小值比key的起始范围还小,调整key起始范围为该文件的最小值,重新开始扫描
           user_begin = file_start;
+          // 清空当前保存的结果
           inputs->clear();
+          // 重新开始遍历
           i = 0;
         } else if (end != NULL && user_cmp->Compare(file_limit, user_end) > 0) {
+          // 如果当前文件的最大值比key的结束范围还大,调整key结束范围为该文件的最大值,重新开始扫描
           user_end = file_limit;
+          // 清空当前保存的结果
           inputs->clear();
+          // 重新开始遍历
           i = 0;
         }
       }
@@ -624,6 +643,7 @@ class VersionSet::Builder {
   }
 
   ~Builder() {
+    // 遍历所有层次的添加文件，将计数器减一，为0的时候删除之
     for (int level = 0; level < config::kNumLevels; level++) {
       const FileSet* added = levels_[level].added_files;
       std::vector<FileMetaData*> to_unref;
@@ -744,7 +764,7 @@ class VersionSet::Builder {
       }
 
       // Add remaining base files
-      // 除了循环之后再添加剩余的文件
+      // 出了循环之后再添加剩余的文件
       for (; base_iter != base_end; ++base_iter) {
         MaybeAddFile(v, level, *base_iter);
       }
@@ -1386,6 +1406,7 @@ Compaction* VersionSet::PickCompaction() {
       }
     }
     // 如果前面的循环找不到,说明已经找了该级别的所有文件了,就把该级别的第一个文件push进去
+    // 也就是回绕回去(wrap-aound)
     if (c->inputs_[0].empty()) {
       // Wrap-around to the beginning of the key space
       c->inputs_[0].push_back(current_->files_[level][0]);
@@ -1448,8 +1469,12 @@ void VersionSet::SetupOtherInputs(Compaction* c) {
     // 新增加的level级别的文件在expended0中返回
     current_->GetOverlappingInputs(level, &all_start, &all_limit, &expanded0);
     // 几种集合的文件大小之和
+    
+    // level级别的文件大小
     const int64_t inputs0_size = TotalFileSize(c->inputs_[0]);
+    // level+1级别的文件大小
     const int64_t inputs1_size = TotalFileSize(c->inputs_[1]);
+    // level级别新增的文件大小
     const int64_t expanded0_size = TotalFileSize(expanded0);
     if (expanded0.size() > c->inputs_[0].size() && // 这个条件表示在level中取[all_start, all_limit]的话比原来的inputs[0]范围大
         inputs1_size + expanded0_size < kExpandedCompactionByteSizeLimit) {
@@ -1483,7 +1508,7 @@ void VersionSet::SetupOtherInputs(Compaction* c) {
 
   // Compute the set of grandparent files that overlap this compaction
   // (parent == level+1; grandparent == level+2)
-  // 取得level+2 中重叠的文件放入grandparents_
+  // 如果level+2还没到最大层次，那么取得level+2 中重叠的文件放入grandparents_
   if (level + 2 < config::kNumLevels) {
 	  // 计算level + 2中也在[all_start,all_limit]范围的文件
     // 用于后面计算level+2级别的overlap时使用
@@ -1560,12 +1585,14 @@ Compaction::~Compaction() {
   }
 }
 
+// 返回true表示不需要合并，只要移动文件到上一层就好了
 bool Compaction::IsTrivialMove() const {
   // Avoid a move if there is lots of overlapping grandparent data.
   // Otherwise, the move could create a parent file that will require
   // a very expensive merge later on.
-  return (num_input_files(0) == 1 &&
-          num_input_files(1) == 0 &&
+  return (num_input_files(0) == 1 &&  // level 只有一个文件
+          num_input_files(1) == 0 &&  // level + 1没有文件
+          // 有重叠的爷爷辈文件大小之和小于阈值
           TotalFileSize(grandparents_) <= kMaxGrandParentOverlapBytes);
 }
 
@@ -1618,6 +1645,7 @@ bool Compaction::ShouldStopBefore(const Slice& internal_key) {
     }
     grandparent_index_++;
   }
+  // 第一次进来该函数就会置为true，第二次以后进来都为true了
   seen_key_ = true;
 
   if (overlapped_bytes_ > kMaxGrandParentOverlapBytes) {

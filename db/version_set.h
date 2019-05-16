@@ -40,6 +40,7 @@ class WritableFile;
 // Return files.size() if there is no such file.
 // REQUIRES: "files" contains a sorted list of non-overlapping files.
 // 找到最小的数组索引i,满足 files[i]->largest >= key
+// 前置条件：files数组中的范围没有重叠
 extern int FindFile(const InternalKeyComparator& icmp,
                     const std::vector<FileMetaData*>& files,
                     const Slice& key);
@@ -69,8 +70,11 @@ class Version {
   // Lookup the value for key.  If found, store it in *val and
   // return OK.  Else return a non-OK status.  Fills *stats.
   // REQUIRES: lock is not held
+  // 该结构体用于返回get查询的统计情况
   struct GetStats {
+    // 对应的文件
     FileMetaData* seek_file;
+    // 查询文件的level
     int seek_file_level;
   };
   Status Get(const ReadOptions&, const LookupKey& key, std::string* val,
@@ -335,6 +339,7 @@ class Compaction {
 
   // Return the level that is being compacted.  Inputs from "level"
   // and "level+1" will be merged to produce a set of "level+1" files.
+  // 合并的等级，在level等级的文件将被合并到level+1级中
   int level() const { return level_; }
 
   // Return the object that holds the edits to the descriptor done
@@ -342,9 +347,11 @@ class Compaction {
   VersionEdit* edit() { return &edit_; }
 
   // "which" must be either 0 or 1
+  // which只能是0或者1
   int num_input_files(int which) const { return inputs_[which].size(); }
 
   // Return the ith input file at "level()+which" ("which" must be 0 or 1).
+  // 返回which级别的第i个待合并文件
   FileMetaData* input(int which, int i) const { return inputs_[which][i]; }
 
   // Maximum size of files to build during this compaction.
@@ -397,6 +404,7 @@ class Compaction {
   // 需要检查与 level-n+2 中产生 overlap 的 size 并与
   // 阈值 kMaxGrandParentOverlapBytes 做比较，
   // 以便提前中止 compact。
+  // parent_ = level + 1, grandparent == level_ + 2
   // State used to check for number of of overlapping grandparent files
   // (parent == level_ + 1, grandparent == level_ + 2)
   std::vector<FileMetaData*> grandparents_;

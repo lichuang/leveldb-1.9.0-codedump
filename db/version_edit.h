@@ -16,11 +16,17 @@ class VersionSet;
 
 // 保存sstable文件元信息的类
 struct FileMetaData {
+  // 引用计数
   int refs;
+  // 在合并之前允许的最多seek数量
   int allowed_seeks;          // Seeks allowed until compaction
+  // 文件序列号，越大表示越新
   uint64_t number;
+  // 文件大小
   uint64_t file_size;         // File size in bytes
+  // 最小key
   InternalKey smallest;       // Smallest internal key served by table
+  // 最大key
   InternalKey largest;        // Largest internal key served by table
 
   FileMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0) { }
